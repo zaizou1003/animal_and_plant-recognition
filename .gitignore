@@ -1,0 +1,27 @@
+# Python cache files
+__pycache__/
+
+# Virtual environment
+.venv/
+
+# Checkpoint and model files
+best_checkpoint.pth
+
+# CSV files (if datasets should not be included in the repository)
+*.csv
+
+# Image files (optional, if not necessary for the code)
+*.jpg
+*.jpeg
+*.png
+
+# Organized data folder
+organized_data/
+
+# System and temporary files
+.DS_Store
+Thumbs.db
+
+# Ignore any backup or temporary files
+*.bak
+*.tmp

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal & Plant Identifier</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #preview {
+            max-width: 300px;
+            margin-top: 10px;
+            display: none;
+        }
+        #loading {
+            display: none;
+        }
+        #result {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Animal & Plant Identifier</h1>
+        <!-- Search Bar -->
+        <form id="searchForm" class="text-center mb-4">
+            <div class="mb-3">
+                <label for="searchInput" class="form-label">Search for a Species:</label>
+                <input type="text" id="searchInput" class="form-control" placeholder="Enter species name..." required>
+            </div>
+            <button type="submit" class="btn btn-secondary">Search</button>
+        </form>
+
+        <div id="searchResults" class="alert alert-light"></div>
+
+        <!-- Prediction Form -->
+        <form id="uploadForm" class="text-center">
+            <div class="mb-3">
+                <label for="imageFile" class="form-label">Upload an Image:</label>
+                <input type="file" id="imageFile" class="form-control" accept="image/*" required>
+            </div>
+            <img id="preview" alt="Image Preview">
+            <button type="submit" class="btn btn-primary mt-3">Upload & Predict</button>
+            <div id="loading" class="mt-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Processing image...</p>
+            </div>
+        </form>
+        <div id="result" class="text-center mt-4">
+            <h3 class="text-success">Prediction Result:</h3>
+            <div id="prediction" class="alert alert-info"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const preview = document.getElementById('preview');
+        const loading = document.getElementById('loading');
+        const predictionDiv = document.getElementById('prediction');
+        const resultDiv = document.getElementById('result');
+
+        document.getElementById('imageFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    preview.src = event.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('imageFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select an image before uploading.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show loading animation
+            loading.style.display = 'block';
+            predictionDiv.innerHTML = '';
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/predict/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Error while fetching prediction');
+                }
+                // Ensure species_info exists and has the type and data keys
+                const speciesInfo = result.species_info || {};
+                const type = speciesInfo.type || "Unknown Type"; // Fallback if type is undefined
+                const data = speciesInfo.data || {}; // Fallback if data is undefined
+                
+                // Display the result
+                predictionDiv.innerHTML = `
+                    <p><strong>Filename:</strong> ${result.filename}</p>
+                    <p><strong>Predicted Class:</strong> ${result.predicted_class}</p>
+                    <p><strong>Predicted Class Name:</strong> ${result.class_name}</p>
+                    <p><strong>Type:</strong> ${type.charAt(0).toUpperCase() + type.slice(1)}</p>
+                    <h4>Details:</h4>
+                    <ul>
+                        ${Object.entries(data)
+                        .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+                        .join('')}
+                    </ul>
+                `;
+                resultDiv.style.display = 'block';
+            } catch (error) {
+                console.error('Error during prediction:', error);
+                alert(`An error occurred while making the prediction: ${error.message}`);
+            } finally {
+                // Hide loading animation
+                loading.style.display = 'none';
+            }
+        });
+        // Search Bar Logic
+        document.getElementById("searchForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const searchInput = document.getElementById("searchInput").value;
+
+            const searchResultsDiv = document.getElementById("searchResults");
+            searchResultsDiv.innerHTML = "Searching..."; // Show loading text
+
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/search/?name=${encodeURIComponent(searchInput)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    searchResultsDiv.innerHTML = `<p class="text-danger">${data.error}</p>`;
+                } else {
+                    let resultHTML = "";
+
+                    // Display exact matches
+                    if (data.exact_matches) {
+                        resultHTML += `<h4>Exact Matches:</h4>`;
+                        resultHTML += formatResults(data.exact_matches.animals, "Animals");
+                        resultHTML += formatResults(data.exact_matches.plants, "Plants");
+                    }
+
+                    // Display partial matches
+                    if (data.partial_matches) {
+                        resultHTML += `<h4>Partial Matches:</h4>`;
+                        resultHTML += formatResults(data.partial_matches.animals, "Animals");
+                        resultHTML += formatResults(data.partial_matches.plants, "Plants");
+                    }
+
+                    searchResultsDiv.innerHTML = resultHTML || `<p>No results found.</p>`;
+                }
+            } catch (error) {
+                console.error("Error during search:", error);
+                searchResultsDiv.innerHTML = `<p class="text-danger">An error occurred: ${error.message}</p>`;
+            }
+        });
+
+        function formatResults(results, title) {
+            if (!results || results.length === 0) return "";
+
+            let html = `<h5>${title}</h5><ul>`;
+            results.forEach((item) => {
+                html += "<li>";
+                for (const [key, value] of Object.entries(item)) {
+                    html += `<strong>${key}:</strong> ${value || "N/A"}<br>`;
+                }
+                html += "</li>";
+            });
+            html += `</ul>`;
+            return html;
+        }
+        //search bar logic
+    </script>
+</body>
+</html>
